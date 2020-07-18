@@ -1,6 +1,6 @@
 """
 Processing a large amount of HRXRD (High Resolution X-Ray Diffraction) data is manual and time-consuming.
-This code automates the process, saving time and man-hours.
+This code, for EE4001, automates the process, saving time and man-hours.
 """
 
 import re
