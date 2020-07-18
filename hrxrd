@@ -1,0 +1,190 @@
+"""
+Processing a large amount of HRXRD (High Resolution X-Ray Diffraction) data is manual and time-consuming.
+This code automates the process, saving time and man-hours.
+"""
+
+import re
+import glob, os, xmltodict, xlwt
+from scipy import asarray as ar,exp
+import numpy as np
+import pylab as plb
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
+import math
+from decimal import *
+#from lmfit.models import PseudoVoigtModel
+from lmfit.models import GaussianModel
+#from lmfit.models import LorentzianModel
+#from lmfit.models import Pearson7Model
+
+mypath = "D:\\Anaconda3\\New folder\\New folder"
+
+os.chdir(mypath)
+
+def func(x,c1,c2,a0):
+    return ((np.arctan(np.cos((x+c2)/180*np.pi)*np.tan(a0/180*np.pi))-c1/180*np.pi)*180/np.pi)
+
+count=0
+
+alphaListDict = {}
+siliconCount = 0
+
+GAN_NAME = 'GaN-pan'
+SI_NAME = 'Si [111]'
+
+for file in glob.glob("*.xrdml"):
+    print(file)
+
+    internalcount = 0
+    f = open(file, "r")
+    xml = xmltodict.parse(f.read())
+
+    scanElements = xml["xrdMeasurements"]["xrdMeasurement"]["scan"]
+
+    firstScanElement = scanElements[0]
+    materialType = xml["xrdMeasurements"]["xrdMeasurement"]["scan"][0]["reflection"]["material"]
+    positions = firstScanElement["dataPoints"]["positions"]
+    xPosition = None
+    yPosition = None
+    for position in positions:
+        if position["@axis"] == "X":
+            xPosition = float(position["commonPosition"])
+        if position["@axis"] == "Y":
+            yPosition = float(position["commonPosition"])
+    #print(materialType)
+    #print(xPosition)
+    #print(yPosition)
+
+    if materialType == SI_NAME:
+        siliconCount += 1
+
+    yAlphaList = []
+    for scanElement in scanElements:
+        positions = scanElement["dataPoints"]["positions"]
+        twoTheta = None
+        for position in positions:
+            if position["@axis"] == "2Theta":
+                twoTheta = float(position["commonPosition"])
+        #print (twoTheta)
+        omegaStart = None
+        for position in positions:
+            if position["@axis"] == "Omega":
+                omegaStart = float(position["startPosition"])
+                #print (omegaStart)
+        omegaEnd = None
+        for position in positions:
+            if position["@axis"] == "Omega":
+                omegaEnd = float(position["endPosition"])
+        #print (omegaEnd)
+        intensities = scanElement["dataPoints"]["intensities"]['#text']
+        list2 = [int(x) for x in intensities.split()]
+
+        indexLength = int(len(list2))
+        theta = np.float64(twoTheta/2)
+        yList = np.array(list2)
+        omegaDiff = omegaEnd-omegaStart
+        omegastepSize = omegaDiff/(len(yList)-1)
+        omegaCurrent = omegaStart
+        xList = []
+
+        for i in range (len(yList)):
+            xList.append(omegaCurrent)
+            omegaCurrent+=omegastepSize
+
+        #print (xList)
+        x = ar ((xList))
+        y = ar (yList)
+        #print (len(x))
+        gmodel = GaussianModel()
+        params = gmodel.guess(y, x=x)
+        result = gmodel.fit(y, params, x=x)
+        #print(out.fit_report(min_correl=0.25))
+        #print (result.fit_report())
+        center = np.float64(result.fit_report().split("center:")[1].split("+")[0])
+        alpha = np.float64((center)-(theta))
+
+        #print(alpha)
+        yAlphaList.append(alpha)
+
+    phiList = []
+    phiCount = 180
+    while phiCount <= 330:
+        phiList.append(phiCount)
+        phiCount = phiCount +30
+
+    phiListextend = []
+    phiCountextend = 0
+    while phiCountextend <= 180:
+        phiListextend.append(phiCountextend)
+        phiCountextend = phiCountextend + 30
+
+    phiList.extend(phiListextend)
+    #print (phiList)
+
+    # Remove the 180 degree
+    yAlphaList.pop()
+    phiList.pop()
+
+    # Remove 180 degree to 330 degree
+    for i in range(6):
+        phiList.append(phiList.pop(0))
+        yAlphaList.append(yAlphaList.pop(0))
+
+    # Add the 0 degree as 360 degree
+    phiList.append(360)
+    yAlphaList.append(yAlphaList[0])
+
+    #for i in range(len(yAlphaList)):
+    #    print(phiList[i], ": ", yAlphaList[i])
+
+    alphaListDict[f"materialType={materialType},xPosition={xPosition},yPosition={yPosition}"] = yAlphaList
+
+assert (len(alphaListDict) == siliconCount * 2)
+
+for key, value in alphaListDict.items():
+
+    m = re.search('materialType=(?P<materialType>.*),xPosition=(?P<xPosition>.*),yPosition=(?P<yPosition>.*)', key)
+    materialType = m.group('materialType')
+    xPosition = m.group('xPosition')
+    yPosition = m.group('yPosition')
+
+    if materialType == SI_NAME:
+        siliconAlphaList = value
+        ganAlphaList = alphaListDict[f"materialType={GAN_NAME},xPosition={xPosition},yPosition={yPosition}"]
+        SiMinusGanList = []
+        for i in range(len(siliconAlphaList)):
+            SiMinusGanList.append(siliconAlphaList[i] - ganAlphaList[i])
+        c1 = 0.01
+        c2 = 90
+        a0 = 0.15
+
+        p0 = (c1,c2,a0)
+
+        phiArray =  np.array([0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330, 360])
+        siliconAlphaArray = np.array(siliconAlphaList)
+        ganAlphaArray = np.array(ganAlphaList)
+        siMinusGanArray = np.array(SiMinusGanList)
+
+        poptSi,pcovSi = curve_fit(func, phiArray, siliconAlphaArray, p0)
+        poptGan,pcovGan = curve_fit(func, phiArray, ganAlphaArray, p0)
+        poptSiMinusGan,pcovSiMinusGan = curve_fit(func, phiArray, siMinusGanArray, p0)
+
+        #print("Si", poptSi)
+        #print("Gan", poptGan)
+        print("Si Minus Gan", poptSiMinusGan)
+        
+        plt.style.use('ggplot')
+        fig = plt.figure()
+        plt.plot(phiArray, func(phiArray, *poptSi), 'r-', label=f"Si {poptSi}")
+        plt.plot(phiArray, func(phiArray, *poptGan), 'blue', label=f"Gan {poptGan}")
+        plt.plot(phiArray, func(phiArray, *poptSiMinusGan), 'black', label=f"SiMinusGan {poptSiMinusGan}")
+        #plt.plot(phiArray, ydata, 'b-', label='data')
+        #print (fit)
+        plt.tick_params(axis='both', which='major', labelsize=20)
+        plt.xlabel('Phi',fontsize=50)
+        plt.ylabel('Alpha',fontsize=50)
+        plt.legend(fontsize = 'xx-large')
+        plt.title(f"xPosition={xPosition},yPosition={yPosition}",fontsize=50,fontweight='bold')
+        plt.savefig(f"xPosition={xPosition},yPosition={yPosition}.png")
+        plt.show()
+        
