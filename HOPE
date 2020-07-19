@@ -1,4 +1,4 @@
-/"
+/*
 In this EE2024 assignment, we design and implement an aerospace exploration vehicle HOPE (Habitability Observer and Precurory Explorer). 
 The data it collects in Mars would provide humans a better understanding of the conditions there. 
 
@@ -6,7 +6,7 @@ In this C embedded programming assignment, the base board is a set of scientific
 the LPC1769 development board is a radiation resistant microcontroller for the scientific instruments and sensors, 
 and the XBee RF module is a set of low gain antennas on HOPE pointed to an intermediate message transmission relay called 
 HOME (Hovering Orbiter and Messenger Extension).
-"/
+*/
 
 
 //lpc17xx
