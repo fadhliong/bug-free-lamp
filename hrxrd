@@ -12,10 +12,8 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 import math
 from decimal import *
-#from lmfit.models import PseudoVoigtModel
 from lmfit.models import GaussianModel
-#from lmfit.models import LorentzianModel
-#from lmfit.models import Pearson7Model
+
 
 mypath = "D:\\Anaconda3\\New folder\\New folder"
 
